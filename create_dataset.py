@@ -41,14 +41,14 @@ def get_char_suffix(char):
         return '%s%s' % (char, char)
     return char
 
-def iterate_on_glyphs(font):
+def glyph_iterator(font):
     for char in CHARS:
         font_glyph_path = '%s/fontimage/%s_%s.png' % (DATASET_PATH, font, get_char_suffix(char))
         with PIL.Image.open(font_glyph_path, 'r') as im:
             yield im, char, font_glyph_path
 
 def numpy_arrays_for_glyph_thumb_iterator(font):
-    for glyph, char, path in iterate_on_glyphs(font):
+    for glyph, char, path in glyph_iterator(font):
         # Note; This mutates the original image
         normalized_glyph = resize_contain(glyph, (WIDTH, HEIGHT))
         yield char, numpy.asarray(normalized_glyph)
@@ -68,7 +68,7 @@ def get_bounds_for_font_glyphs(font, bounds = get_empty_bounds()):
     """
     Optionally pass in existing bounds to add to for the whole font set.
     """
-    for glyph, char, path in iterate_on_glyphs(font):
+    for glyph, char, path in glyph_iterator(font):
         if glyph.height < 20:
             print("glyph.h <20 ", font, char, glyph.size)
         if glyph.height > 1000:
@@ -92,7 +92,7 @@ def get_tags_for_font(font):
                     tags_for_font.append(stripped_tag)
     return tags_for_font
 
-def get_fonts_for_set(dataset):
+def fonts_for_set_iterator(dataset):
     set_list_path = '%s/fontset/%sset' % (DATASET_PATH, dataset)
     with open(set_list_path, 'r') as set_list_file:
         for line in set_list_file:
@@ -102,9 +102,10 @@ def get_fonts_for_set(dataset):
 if __name__ == '__main__':
     bounds = get_empty_bounds()
     with h5py.File('fonts.hdf5', 'w') as h5file:
+        #for dataset in ('dev',):
         for dataset in ('train', 'test', 'val'):
             set_group = h5file.create_group('%sset' % dataset)
-            for font in get_fonts_for_set(dataset):
+            for font in fonts_for_set_iterator(dataset):
                 font_array = get_numpy_arrays_for_glyphs(font)
                 fontset = set_group.create_dataset(font, data=font_array)
                 fontset.attrs.create('tags', get_tags_for_font(font))
