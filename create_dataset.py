@@ -1,11 +1,8 @@
 import h5py
 import math
-import PIL, PIL.ImageFont, PIL.Image, PIL.ImageDraw, PIL.ImageChops, PIL.ImageOps
-import os
-import random
+import PIL, PIL.Image
 import string
 import numpy
-import sys
 
 DATASET_PATH = '/Users/wgrose/Google Drive/Fonts/dataset'
 CHARS = string.ascii_uppercase + string.ascii_lowercase
