@@ -1,4 +1,5 @@
 import h5py
+import math
 import PIL, PIL.ImageFont, PIL.Image, PIL.ImageDraw, PIL.ImageChops, PIL.ImageOps
 import os
 import random
@@ -8,97 +9,102 @@ import sys
 
 DATASET_PATH = '/Users/wgrose/Google Drive/Fonts/dataset'
 CHARS = string.ascii_uppercase + string.ascii_lowercase
+WIDTH, HEIGHT = 256, 256
 
-# w, h = 64, 64
-# w0, h0 = 256, 256
+def get_empty_bounds():
+    return {
+        'min_w': float('inf'),
+        'max_w': 0,
+        'min_h': float('inf'),
+        'max_h': 0
+    }
 
-# blank = PIL.Image.new('L', (w0*5, h0*3), 255)
-
-# def read_font(fn):
-#     font = PIL.ImageFont.truetype(fn, min(w0, h0))
-
-#     # We need to make sure we scale down the fonts but preserve the vertical alignment
-#     min_ly = float('inf')
-#     max_hy = float('-inf')
-#     max_width = 0
-#     imgs = []
-
-#     for char in CHARS:
-#         print('...', char)
-#         # Draw character
-#         img = PIL.Image.new("L", (w0*5, h0*3), 255)
-#         draw = PIL.ImageDraw.Draw(img)
-#         draw.text((w0, h0), char, font=font)
-
-#         # Get bounding box
-#         diff = PIL.ImageChops.difference(img, blank)
-#         lx, ly, hx, hy = diff.getbbox()
-#         min_ly = min(min_ly, ly)
-#         max_hy = max(max_hy, hy)
-#         max_width = max(max_width, hx - lx)
-#         imgs.append((lx, hx, img))
-
-#     print('crop dims:', max_hy - min_ly, max_width)
-#     scale_factor = min(1.0 * h / (max_hy - min_ly), 1.0 * w / max_width)
-#     data = []
-
-#     for lx, hx, img in imgs:
-#         img = img.crop((lx, min_ly, hx, max_hy))
-
-#         # Resize to smaller
-#         new_width = (hx-lx) * scale_factor
-#         new_height = (max_hy - min_ly) * scale_factor
-#         img = img.resize((int(new_width), int(new_height)), PIL.Image.ANTIALIAS)
-
-#         # Expand to square
-#         img_sq = PIL.Image.new('L', (w, h), 255)
-#         offset_x = (w - new_width)/2
-#         offset_y = (h - new_height)/2
-#         print(offset_x, offset_y)
-#         img_sq.paste(img, (int(offset_x), int(offset_y)))
-
-#         # Convert to numpy array
-#         matrix = numpy.array(img_sq.getdata()).reshape((h, w))
-#         matrix = 255 - matrix
-#         data.append(matrix)
-
-#     return numpy.array(data)
-
+def resize_contain(image, size, bg_color=(255, 255, 255, 0)):
+    """
+    Resize image according to size.
+    image:      a Pillow image instance
+    size:       a list of two integers [width, height]
+    """
+    img_format = image.format
+    image.thumbnail((size[0], size[1]))
+    background = PIL.Image.new('RGBA', (size[0], size[1]), bg_color)
+    img_position = (
+        (size[0] - image.width) // 2,
+        (size[1] - image.height) // 2
+    )
+    background.paste(image, img_position)
+    background.format = img_format
+    return background.convert('RGBA')
 
 def get_char_suffix(char):
     if char.isupper():
         return '%s%s' % (char, char)
     return char
 
-
-def get_narray_for_font(font):
+def iterate_on_glyphs(font):
     for char in CHARS:
         font_glyph_path = '%s/fontimage/%s_%s.png' % (DATASET_PATH, font, get_char_suffix(char))
         with PIL.Image.open(font_glyph_path, 'r') as im:
-            print(im.format, im.size)
+            yield im, char, font_glyph_path
+
+def numpy_arrays_for_glyph_thumb_iterator(font):
+    for glyph, char, path in iterate_on_glyphs(font):
+        # Note; This mutates the original image
+        normalized_glyph = resize_contain(glyph, (WIDTH, HEIGHT))
+        yield char, numpy.asarray(normalized_glyph)
+
+def get_numpy_arrays_for_glyphs(font):
+    #narray = numpy.array(shape=(len(CHARS), WIDTH, HEIGHT, 4))
+    all_chars_array = None
+    for char, glyph_narr in numpy_arrays_for_glyph_thumb_iterator(font):
+        if not numpy.any(all_chars_array):
+            all_chars_array = glyph_narr
+        else:
+            all_chars_array = numpy.append(all_chars_array, glyph_narr)
+    return all_chars_array
+
+
+def get_bounds_for_font_glyphs(font, bounds = get_empty_bounds()):
+    """
+    Optionally pass in existing bounds to add to for the whole font set.
+    """
+    for glyph, char, path in iterate_on_glyphs(font):
+        if glyph.height < 20:
+            print("glyph.h <20 ", font, char, glyph.size)
+        if glyph.height > 1000:
+            print("glyph.h >1000 ", font, char, glyph.size)
+        bounds['min_w'] = min(glyph.width, bounds['min_w'])
+        bounds['max_w'] = max(glyph.width, bounds['max_w'])
+        bounds['min_h'] = min(glyph.height, bounds['min_h'])
+        bounds['max_h'] = max(glyph.height, bounds['max_h'])
+    return bounds
 
 
 def get_tags_for_font(font):
     tag_list_path = '%s/taglabel/%s' % (DATASET_PATH, font)
+    tags_for_font = []
     with open(tag_list_path, 'r') as tag_list_file:
         for line in tag_list_file:
             tags = line.strip().split(' ')
             for tag in tags:
                 stripped_tag = tag.strip()
                 if len(stripped_tag):
-                    yield stripped_tag
+                    tags_for_font.append(stripped_tag)
+    return tags_for_font
 
 def get_fonts_for_set(dataset):
-    h5 = h5py.File('fonts_%sset.hdf5' % dataset, 'w')
     set_list_path = '%s/fontset/%sset' % (DATASET_PATH, dataset)
     with open(set_list_path, 'r') as set_list_file:
         for line in set_list_file:
             font_name =  line.strip()
             yield font_name
 
-for dataset in ('test',): #, 'train', test', 'val'):
-    for font in get_fonts_for_set(dataset):
-        for tag in get_tags_for_font(font):
-            print(tag)
-        get_narray_for_font(font)
-
+if __name__ == '__main__':
+    bounds = get_empty_bounds()
+    with h5py.File('fonts.hdf5', 'w') as h5file:
+        for dataset in ('train', 'test', 'val'):
+            set_group = h5file.create_group('%sset' % dataset)
+            for font in get_fonts_for_set(dataset):
+                font_array = get_numpy_arrays_for_glyphs(font)
+                fontset = set_group.create_dataset(font, data=font_array)
+                fontset.attrs.create('tags', get_tags_for_font(font))
