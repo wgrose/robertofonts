@@ -5,9 +5,12 @@ import PIL, PIL.Image
 import string
 import numpy
 
+DEBUG_MODE = True
 DATASET_PATH = '%s/Google Drive/Fonts/dataset' % (os.path.expanduser("~"))
 CHARS = string.ascii_uppercase + string.ascii_lowercase
 WIDTH, HEIGHT = 256, 256
+DATA_SETS = ('dev',) if DEBUG_MODE else ('train', 'test', 'val')
+H5_FILE = 'fonts_dev.hdf5' if DEBUG_MODE else 'fonts.hdf5'
 
 def get_empty_bounds():
     return {
@@ -32,7 +35,7 @@ def resize_contain(image, size, bg_color=(255, 255, 255, 0)):
     )
     background.paste(image, img_position)
     background.format = img_format
-    return background.convert('RGBA')
+    return background
 
 def get_char_suffix(char):
     if char.isupper():
@@ -49,10 +52,11 @@ def numpy_arrays_for_glyph_thumb_iterator(font):
     for glyph, char, path in glyph_iterator(font):
         # Note; This mutates the original image
         normalized_glyph = resize_contain(glyph, (WIDTH, HEIGHT))
-        yield char, numpy.asarray(normalized_glyph)
+         # Convert it to 1-bit black and white.
+        one_bit_img = normalized_glyph.convert('1')
+        yield char, numpy.asarray(one_bit_img)
 
 def get_numpy_arrays_for_glyphs(font):
-    #narray = numpy.array(shape=(len(CHARS), WIDTH, HEIGHT, 4))
     all_chars_array = None
     for char, glyph_narr in numpy_arrays_for_glyph_thumb_iterator(font):
         if not numpy.any(all_chars_array):
@@ -98,10 +102,8 @@ def fonts_for_set_iterator(dataset):
             yield font_name
 
 if __name__ == '__main__':
-    bounds = get_empty_bounds()
-    with h5py.File('fonts.hdf5', 'w') as h5file:
-        #for dataset in ('dev',):
-        for dataset in ('train', 'test', 'val'):
+    with h5py.File(H5_FILE, 'w') as h5file:
+        for dataset in DATA_SETS:
             set_group = h5file.create_group('%sset' % dataset)
             for font in fonts_for_set_iterator(dataset):
                 font_array = get_numpy_arrays_for_glyphs(font)
