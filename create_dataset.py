@@ -1,10 +1,11 @@
+import os.path
 import h5py
 import math
 import PIL, PIL.Image
 import string
 import numpy
 
-DATASET_PATH = '/Users/wgrose/Google Drive/Fonts/dataset'
+DATASET_PATH = '%s/Google Drive/Fonts/dataset' % (os.path.expanduser("~"))
 CHARS = string.ascii_uppercase + string.ascii_lowercase
 WIDTH, HEIGHT = 256, 256
 
